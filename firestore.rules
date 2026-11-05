@@ -1,0 +1,106 @@
+rules_version = '2';
+
+// CampusFix access control.
+// The app hides staff features from students, but these rules are what
+// actually enforce it: a student cannot change a status even with a
+// modified client.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function aluEmail() {
+      return request.auth.token.email.lower().matches('^[^@]+@(alustudent|alueducation)[.]com$');
+    }
+
+    // role == 'staff' can only be set by an admin in the Firebase Console.
+    function staffRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff';
+    }
+
+    // Signed in, email link opened, and either an ALU address or an
+    // admin-created staff account (staff may use a non-ALU email).
+    function verified() {
+      return signedIn() && request.auth.token.email_verified == true
+        && (aluEmail() || staffRole());
+    }
+
+    function isStaff() {
+      return signedIn() && request.auth.token.email_verified == true && staffRole();
+    }
+
+    function changedOnly(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    function validDetails(d) {
+      return d.title is string && d.title.size() >= 5 && d.title.size() <= 80
+        && d.description is string && d.description.size() >= 15 && d.description.size() <= 1000
+        && d.category in ['facilities', 'water', 'electricity', 'furniture', 'sanitation', 'safety']
+        && d.location is string && d.location.size() > 0 && d.location.size() <= 100
+        && d.get('locationDetail', '') is string && d.get('locationDetail', '').size() <= 100;
+    }
+
+    // ---- users/{uid} -----------------------------------------------------
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isStaff());
+
+      // Self-registration always creates a student. Staff are promoted by
+      // an admin editing `role` in the Firebase Console.
+      allow create: if signedIn() && request.auth.uid == uid && aluEmail()
+        && request.resource.data.keys().hasOnly(['name', 'email', 'role', 'createdAt'])
+        && request.resource.data.role == 'student'
+        && request.resource.data.email == request.auth.token.email.lower()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 3 && request.resource.data.name.size() <= 80;
+
+      // Users may rename themselves but never change their role or email.
+      allow update: if signedIn() && request.auth.uid == uid && changedOnly(['name']);
+      allow delete: if false;
+    }
+
+    // ---- incidents/{id} --------------------------------------------------
+    match /incidents/{id} {
+      allow read: if verified();
+
+      allow create: if verified()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.status == 'submitted'
+        && request.resource.data.history.size() == 1
+        && validDetails(request.resource.data);
+
+      // Reporter edits details, only while still Submitted.
+      allow update: if verified()
+        && resource.data.reporterId == request.auth.uid
+        && resource.data.status == 'submitted'
+        && changedOnly(['title', 'description', 'category', 'location', 'locationDetail', 'photoUrl', 'photoPath', 'updatedAt'])
+        && validDetails(request.resource.data);
+
+      // Staff change the status and append exactly one timeline entry.
+      allow update: if isStaff()
+        && changedOnly(['status', 'history', 'updatedAt'])
+        && request.resource.data.status in ['submitted', 'inProgress', 'resolved', 'rejected']
+        && request.resource.data.history.size() == resource.data.history.size() + 1;
+
+      allow delete: if verified()
+        && resource.data.reporterId == request.auth.uid
+        && resource.data.status == 'submitted';
+    }
+
+    // ---- notifications/{id} ----------------------------------------------
+    match /notifications/{id} {
+      allow read: if verified() && resource.data.userId == request.auth.uid;
+
+      // A student writes their own "Report received"; staff notify reporters.
+      allow create: if verified()
+        && (request.resource.data.userId == request.auth.uid || isStaff());
+
+      // Only flipping `read` is allowed, and only by the recipient.
+      allow update: if verified() && resource.data.userId == request.auth.uid
+        && changedOnly(['read']);
+      allow delete: if false;
+    }
+  }
+}
