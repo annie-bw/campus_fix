@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1037021333938",
+    "project_id": "campus-fix-alu-90840",
+    "storage_bucket": "campus-fix-alu-90840.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1037021333938:android:a2994262626c9850f6bcab",
+        "android_client_info": {
+          "package_name": "com.alu.campus_fix"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBZ38xccoVRudsKqUOuHRZ7fD0lQRyNnLA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
