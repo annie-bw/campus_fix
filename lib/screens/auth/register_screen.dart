@@ -69,14 +69,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 16),
                 AppTextField(
-                  label: 'ALU email',
+                  label: 'Email',
                   controller: _email,
                   hint: 'name@alustudent.com',
-                  helper: 'Only ALU emails can sign up.',
+                  helper: 'Students: use your ALU email. Staff: use the email you were invited with.',
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
                   autofillHints: const [AutofillHints.email],
-                  validator: Validators.aluEmail,
+                  validator: Validators.email, // non-ALU is checked against staff invites
                 ),
                 const SizedBox(height: 16),
                 AppTextField(

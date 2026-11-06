@@ -97,21 +97,25 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// ALU emails sign in normally. Any other email must belong to a staff
-  /// account an admin created; otherwise it is signed straight back out.
+  /// account; otherwise it is signed straight back out.
   Future<String?> signIn(String email, String password) => _run(() async {
     await _service.signIn(email, password);
-    if (!Validators.isAluEmail(email) && !await _service.currentUserIsStaff()) {
+    if (Validators.isAluEmail(email) || await _service.currentUserIsStaff()) return;
+    // An invited staff member whose profile didn't save at sign-up: create
+    // it now (ensureProfile picks up the invite), then check again.
+    try {
+      await _service.ensureProfile().timeout(const Duration(seconds: 10));
+    } catch (_) {}
+    if (!await _service.currentUserIsStaff()) {
       await _service.signOut();
       throw const AccessDeniedException();
     }
   });
 
-  Future<String?> register(String name, String email, String password) {
-    if (!Validators.isAluEmail(email)) {
-      return Future.value('Only ALU email addresses can sign up.');
-    }
-    return _run(() => _service.register(name: name, email: email, password: password));
-  }
+  /// ALU emails register as students; invited emails (staffInvites) as staff.
+  /// The service rejects everything else.
+  Future<String?> register(String name, String email, String password) =>
+      _run(() => _service.register(name: name, email: email, password: password));
 
   Future<String?> resendVerification() => _run(_service.sendVerificationEmail);
 
