@@ -15,7 +15,16 @@ service cloud.firestore {
       return request.auth.token.email.lower().matches('^[^@]+@(alustudent|alueducation)[.]com$');
     }
 
-    // role == 'staff' can only be set by an admin in the Firebase Console.
+    // An admin added staffInvites/{email} for this account's email.
+    function invitedStaff() {
+      return exists(/databases/$(database)/documents/staffInvites/$(request.auth.token.email.lower()));
+    }
+
+    function invite() {
+      return get(/databases/$(database)/documents/staffInvites/$(request.auth.token.email.lower())).data;
+    }
+
+    // role == 'staff' comes only from an admin: an invite or a console edit.
     function staffRole() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'staff';
     }
@@ -47,18 +56,35 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isStaff());
 
-      // Self-registration always creates a student. Staff are promoted by
-      // an admin editing `role` in the Firebase Console.
-      allow create: if signedIn() && request.auth.uid == uid && aluEmail()
-        && request.resource.data.keys().hasOnly(['name', 'email', 'role', 'createdAt'])
-        && request.resource.data.role == 'student'
+      // Self-registration creates a student (ALU email), or staff when an
+      // admin has invited this exact email in staffInvites. The department
+      // must match the invite's.
+      allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.email == request.auth.token.email.lower()
         && request.resource.data.name is string
-        && request.resource.data.name.size() >= 3 && request.resource.data.name.size() <= 80;
+        && request.resource.data.name.size() >= 3 && request.resource.data.name.size() <= 80
+        && (
+          (invitedStaff()
+            && request.resource.data.keys().hasOnly(['name', 'email', 'role', 'createdAt', 'department'])
+            && request.resource.data.role == 'staff'
+            && request.resource.data.get('department', null) == invite().get('department', null))
+          || (aluEmail()
+            && request.resource.data.keys().hasOnly(['name', 'email', 'role', 'createdAt'])
+            && request.resource.data.role == 'student')
+        );
 
       // Users may rename themselves but never change their role or email.
       allow update: if signedIn() && request.auth.uid == uid && changedOnly(['name']);
       allow delete: if false;
+    }
+
+    // ---- staffInvites/{email} --------------------------------------------
+    // Added by an admin in the Firebase Console (doc ID = lower-case email,
+    // optional `department`). The register screen looks up one address
+    // before the account exists, so single gets are open; listing is not.
+    match /staffInvites/{email} {
+      allow get: if true;
+      allow list, write: if false;
     }
 
     // ---- incidents/{id} --------------------------------------------------
