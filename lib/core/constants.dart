@@ -9,9 +9,9 @@ import 'theme/app_colors.dart';
 ///
 const allowedEmailDomains = ['alustudent.com', 'alueducation.com'];
 
-/// Staff exception: an account whose users/{uid}.role is 'staff' (set by an
-/// admin in the Firebase Console) may use a non-ALU email. Nobody can
-/// self-register as staff, so this does not open the app to outsiders.
+/// Staff exception: an email an admin added to staffInvites/{email} (in the
+/// Firebase Console) may sign up with any domain and becomes staff. Nobody
+/// can invite themselves, so this does not open the app to outsiders.
 
 /// Address of the CampusFix photo Worker on Cloudflare (see
 /// cloudflare/photo-worker.js). Photos are stored in Cloudflare Workers KV.

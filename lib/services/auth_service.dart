@@ -2,14 +2,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../core/constants.dart';
+import '../core/validators.dart';
 import '../models/app_user.dart';
 import 'storage_service.dart';
 
-/// Thrown when someone signs in with a non-ALU email that is not a staff
-/// account created by an admin.
+/// Thrown when someone uses a non-ALU email that an admin has not set up
+/// as staff (or the staff invite can't be checked).
 class AccessDeniedException implements Exception {
-  const AccessDeniedException();
-  String get message => 'CampusFix is for ALU accounts. Sign in with your ALU email.';
+  const AccessDeniedException([this.message = 'CampusFix is for ALU accounts. Sign in with your ALU email.']);
+  final String message;
 }
 
 /// Thin wrapper around Firebase Auth + the users collection.
@@ -33,7 +34,20 @@ class AuthService {
   Future<void> signIn(String email, String password) =>
       _auth.signInWithEmailAndPassword(email: email.trim(), password: password);
 
+  /// Students sign up with an ALU email. Anyone else (e.g. staff on Gmail)
+  /// may sign up only if an admin added staffInvites/{email}; they become staff.
   Future<void> register({required String name, required String email, required String password}) async {
+    final isAlu = Validators.isAluEmail(email);
+    // For a non-ALU email the invite is the only way in, so a failed lookup
+    // must surface (e.g. rules not published, offline) instead of reading
+    // as "not invited".
+    final invite = await _staffInvite(email, throwOnError: !isAlu);
+    if (invite == null && !isAlu) {
+      throw AccessDeniedException(
+        'No staff invite found for ${email.trim().toLowerCase()}. '
+        'Check that an admin added this exact email, or sign up with your ALU email if you are a student.',
+      );
+    }
     final cred = await _auth.createUserWithEmailAndPassword(email: email.trim(), password: password);
     final user = cred.user!;
     await user.updateDisplayName(name.trim());
@@ -43,20 +57,51 @@ class AuthService {
     // a slow or misconfigured backend freeze the sign-up screen; the write
     // keeps syncing in the background and ensureProfile() repairs it later.
     try {
-      await _writeNewProfile(user.uid, name, email).timeout(const Duration(seconds: 8));
+      await _writeNewProfile(user.uid, name, email, invite).timeout(const Duration(seconds: 8));
     } catch (_) {}
   }
 
-  Future<void> _writeNewProfile(String uid, String name, String email) => _users
-      .doc(uid)
-      .set(
-        AppUser(
-          uid: uid,
-          name: name.trim(),
-          email: email.trim().toLowerCase(),
-          role: UserRole.student, // new accounts are always students
-        ).toNewUserMap(),
-      );
+  /// The staffInvites/{email} doc's data, or null if this email is not
+  /// invited. If the lookup fails it returns null (student rules apply)
+  /// unless [throwOnError] is set.
+  Future<Map<String, dynamic>?> _staffInvite(String email, {bool throwOnError = false}) async {
+    final id = email.trim().toLowerCase();
+    if (id.isEmpty) return null;
+    try {
+      final doc = await _db
+          .collection('staffInvites')
+          .doc(id)
+          .get(const GetOptions(source: Source.server)) // never trust a stale cache here
+          .timeout(const Duration(seconds: 10));
+      return doc.exists ? (doc.data() ?? {}) : null;
+    } on FirebaseException catch (e) {
+      if (!throwOnError) return null;
+      if (e.code == 'permission-denied') {
+        throw const AccessDeniedException(
+          'Staff sign-up isn’t set up yet: the latest Firestore rules haven’t been published.',
+        );
+      }
+      rethrow;
+    } catch (_) {
+      if (!throwOnError) return null;
+      throw const AccessDeniedException('Couldn’t check your staff invite. Check your connection and retry.');
+    }
+  }
+
+  Future<void> _writeNewProfile(String uid, String name, String email, Map<String, dynamic>? invite) {
+    final department = invite?['department'];
+    return _users
+        .doc(uid)
+        .set(
+          AppUser(
+            uid: uid,
+            name: name.trim(),
+            email: email.trim().toLowerCase(),
+            role: invite != null ? UserRole.staff : UserRole.student,
+            department: department is String && department.trim().isNotEmpty ? department : null,
+          ).toNewUserMap(),
+        );
+  }
 
   /// Creates the users/{uid} doc if it is missing (e.g. sign-up was
   /// interrupted before the profile saved). Never touches an existing doc,
@@ -68,7 +113,7 @@ class AuthService {
     if (doc.exists) return;
     final email = user.email ?? '';
     final name = (user.displayName?.trim().isNotEmpty ?? false) ? user.displayName! : email.split('@').first;
-    await _writeNewProfile(user.uid, name, email);
+    await _writeNewProfile(user.uid, name, email, await _staffInvite(email));
   }
 
   /// True when the signed-in user's profile has role 'staff'. Used to let

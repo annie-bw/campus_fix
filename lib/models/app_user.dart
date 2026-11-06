@@ -3,7 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/constants.dart';
 
 /// Profile stored at users/{uid}. Role is the source of truth for access
-/// control; it is only ever changed by an admin in the Firebase Console.
+/// control. Staff come from an admin's invite (staffInvites/{email}) or an
+/// admin editing `role` in the Firebase Console; nobody can change their own.
 class AppUser {
   const AppUser({
     required this.uid,
@@ -32,12 +33,13 @@ class AppUser {
     );
   }
 
-  /// Fields written on registration. Role is always "student" here;
-  /// security rules reject any other value.
+  /// Fields written on registration. Security rules only accept "staff"
+  /// when staffInvites/{email} exists, and "student" for ALU emails.
   Map<String, dynamic> toNewUserMap() => {
     'name': name,
     'email': email,
-    'role': UserRole.student.name,
+    'role': role.name,
+    if (department != null) 'department': department,
     'createdAt': FieldValue.serverTimestamp(),
   };
 }
