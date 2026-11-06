@@ -9,7 +9,7 @@ resolved. Authorised staff review reports and update their status.
 ## Features
 
 - **Auth:** register / sign in / sign out with ALU email only
-  (`@alustudent.com`, `@alueducation.com`), mandatory email verification, password reset.
+  (`@alustudent.com`), mandatory email verification, password reset.
 - **Report an issue:** category tiles, title, description, campus location picker,
   optional photo (camera or gallery, compressed on device) with live upload progress.
 - **Browse:** live campus feed, search (title / place / reference), status tabs,
