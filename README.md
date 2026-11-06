@@ -43,6 +43,7 @@ made by staff updates the home stats, list, details and dashboard at the same ti
 |---|---|
 | `users/{uid}` | `name`, `email`, `role` (`student` \| `staff`), `department?`, `createdAt` |
 | `incidents/{id}` | `reference`, `title`, `description`, `category`, `location`, `status`, `reporterId`, `reporterName`, `photoUrl?`, `photoPath?`, `history[] {status, at, byName, note?}`, `createdAt`, `updatedAt` |
+| `staffInvites/{email}` | `department?` (admin-only, doc ID is the lower-case email) |
 | `notifications/{id}` | `userId`, `incidentId`, `title`, `body`, `status`, `read`, `createdAt` |
 
 Photos are stored in Cloudflare Workers KV at `incidents/{uid}/{incidentId}_{timestamp}.jpg`,
@@ -55,7 +56,8 @@ Enforced server-side in [`firestore.rules`](firestore.rules) and the photo Worke
 
 - Every read/write requires a signed-in, **email-verified** account with an **ALU email**
   (`@alustudent.com`, `@alueducation.com`), or an admin-created **staff** account (see below).
-- Self-registration can only create `role: "student"`; nobody can change their own role.
+- Self-registration creates `role: "student"`, or `"staff"` only for an email an admin listed in
+  `staffInvites`; nobody can change their own role.
 - Students can edit/delete only **their own** reports and only while `status == "submitted"`.
 - Only `staff` can change `status`/`history`, and must append exactly one timeline entry.
 - Students only read their own notifications; only staff can notify other users.
@@ -77,17 +79,23 @@ Enforced server-side in [`firestore.rules`](firestore.rules) and the photo Worke
 
 ### Creating a staff account
 
-Students self-register with their ALU email. Staff cannot self-register; an admin creates them:
+Students self-register with their ALU email. Staff (who may use any email, e.g. Gmail) sign up
+in the app too, but only after an admin invites them:
 
-- **Staff with an ALU email:** register in the app, verify the email, then in **Firebase Console →
-  Firestore → users → {uid}** change `role` from `student` to `staff`.
-- **Staff with a non-ALU email** (used for the demo, as no real ALU staff account was available):
-  1. **Authentication → Users → Add user** with the email and a password; copy the new user's UID.
-  2. **Firestore → users → Add document** with that UID as the ID and the fields `name` (string),
-     `email` (string, lower case), `role` = `staff`, `createdAt` (timestamp).
-  3. Sign in on the app, tap **Resend** on the verify screen, open the link, then **I've verified**.
+1. **Firebase Console → Firestore → Start collection `staffInvites`** (first time only), then
+   **Add document** with the staff member's email **in lower case as the document ID**
+   (e.g. `jane.doe@gmail.com`). Optionally add a `department` (string) field.
+2. The staff member opens the app, taps **Create account**, and signs up with that exact email.
+   The app finds the invite and creates their profile with `role: "staff"`.
+3. They open the verification link in their inbox and tap **I've verified** → staff dashboard.
 
-A non-ALU email without `role: staff` is signed straight back out, and the Firestore rules deny it.
+Alternatively, an existing student account can be promoted by changing `role` to `staff` in
+**Firestore → users → {uid}**.
+
+The Firestore rules only accept `role: "staff"` on sign-up when `staffInvites/{email}` exists,
+and the app has no way to write invites. Deleting an invite stops new sign-ups with that email
+but doesn't demote an existing account; to do that, change its `role` back in `users/{uid}`.
+A non-ALU email that isn't invited can't sign up and is signed straight back out.
 
 ## Tests
 
