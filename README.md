@@ -1,4 +1,4 @@
-# CampusFix — Campus Incident Reporting App
+# CampusFix : Campus Incident Reporting App
 
 A Flutter app for ALU students to report campus issues (water, electricity,
 facilities, furniture, sanitation, safety) and follow them until they are
@@ -84,7 +84,7 @@ in the app too, but only after an admin invites them:
 
 1. **Firebase Console → Firestore → Start collection `staffInvites`** (first time only), then
    **Add document** with the staff member's email **in lower case as the document ID**
-   (e.g. `jane.doe@gmail.com`). Optionally add a `department` (string) field.
+   (e.g. `jane.bene@gmail.com`). Optionally add a `department` (string) field.
 2. The staff member opens the app, taps **Create account**, and signs up with that exact email.
    The app finds the invite and creates their profile with `role: "staff"`.
 3. They open the verification link in their inbox and tap **I've verified** → staff dashboard.
